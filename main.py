@@ -1,16 +1,44 @@
-from flask import Flask, request
-import logging
 import json
+import logging
+from random import choice
+from flask import Flask, request
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO, filename='app.log',
+                    format='%(asctime)s %(levelname)s %(name)s %(message)s')
 
-logging.basicConfig(level=logging.INFO)
-sessionStorage = {}
+
+def handle_dialog(res, req):
+    if req['session']['new']:
+        res['response']['text'] = 'Привет. Купи слона!'
+        return
+    if req['state']['session']:
+        if len(set(
+                req['request']['nlu']['tokens']) - {'ладно', 'куплю', 'покупаю', 'хорошо'}) != len(
+            set(req['request']['nlu']['tokens'])):
+            res['reponse']['text'] = 'Кролика можно найти на Яндекс.Маркете!'
+            res['response']['buttons'] = [{'title': 'Посмотреть',
+                                           'url': 'https://market.yandex.ru/search?cvredirect=2&suggest_reqid=91938777584344923039168083875807&text=кролик'}]
+            return
+        else:
+            user_answ = req['resquest']['command']
+            res['response']['text'] = f'Все гвороят {user_answ}, а ты купи кролика'
+        res['response']['buttons'] = [{'title': choice(['ладно', 'куплю', 'покупаю', 'хорошо'])}]
+        res['session_state']['rabbit'] = True
+        return
+    if len(set(req['request']['nlu']['tokens']) - {'ладно', 'куплю', 'покупаю', 'хорошо'}) != len(
+            set(req['request']['nlu']['tokens'])):
+        res['reponse']['text'] = 'Кролика можно найти на Яндекс.Маркете!'
+        res['response']['buttons'] = [{'title': 'Посмотреть',
+                                       'url': 'https://market.yandex.ru/search?cvredirect=2&suggest_reqid=91938777584344923039168083875807&text=слон'}]
+    else:
+        user_answ = req['resquest']['command']
+        res['response']['text'] = f'Все гвороят {user_answ}, а ты купи кролика'
+        res['response']['buttons'] = [{'title': choice(['ладно', 'куплю', 'покупаю', 'хорошо'])}]
 
 
 @app.route('/post', methods=['POST'])
 def main():
-    logging.info(f'Request: {request.json!r}')
     response = {
         'session': request.json['session'],
         'version': request.json['version'],
@@ -18,54 +46,9 @@ def main():
             'end_session': False
         }
     }
-    handle_dialog(request.json, response)
-    logging.info(f'Response:  {response!r}')
+    handle_dialog(response, request.json)
+    logging.info('Request: %r', response)
     return json.dumps(response)
-
-
-def handle_dialog(req, res):
-    user_id = req['session']['user_id']
-
-    if req['session']['new']:
-        sessionStorage[user_id] = {
-            'suggests': [
-                "Не хочу.",
-                "Не буду.",
-                "Отстань!",
-            ]
-        }
-        res['response']['text'] = 'Привет! Купи слона!'
-        res['response']['buttons'] = get_suggests(user_id)
-        return
-    if req['request']['original_utterance'].lower() in [
-        'ладно',
-        'куплю',
-        'покупаю',
-        'хорошо'
-    ]:
-        res['response']['text'] = 'Слона можно найти на Яндекс.Маркете!'
-        res['response']['end_session'] = True
-        return
-    res['response']['text'] = \
-        f"Все говорят '{req['request']['original_utterance']}', а ты купи слона!"
-    res['response']['buttons'] = get_suggests(user_id)
-
-
-def get_suggests(user_id):
-    session = sessionStorage[user_id]
-    suggests = [
-        {'title': suggest, 'hide': True}
-        for suggest in session['suggests'][:2]
-    ]
-    session['suggests'] = session['suggests'][1:]
-    sessionStorage[user_id] = session
-    if len(suggests) < 2:
-        suggests.append({
-            "title": "Ладно",
-            "url": "https://market.yandex.ru/search?text=слон",
-            "hide": True
-        })
-    return suggests
 
 
 if __name__ == '__main__':
